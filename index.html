@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="referrer" content="no-referrer">
+    <title>GetTravel | Вьетнам</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <a class="brand" href="https://gettravel.asia/" target="_blank" rel="noopener noreferrer">Get<span>Travel</span></a>
+      <nav aria-label="Управление сайтом">
+        <button id="home" type="button" title="На главную" aria-label="На главную"><i data-lucide="house"></i></button>
+        <button id="reload" type="button" title="Обновить сайт" aria-label="Обновить сайт"><i data-lucide="rotate-cw"></i></button>
+        <a class="icon-button" href="https://gettravel.asia/" target="_blank" rel="noopener noreferrer" title="Открыть сайт в браузере" aria-label="Открыть сайт в браузере"><i data-lucide="external-link"></i></a>
+      </nav>
+    </header>
+    <div id="notice" role="status" hidden></div>
+    <main>
+      <div id="loading" role="status">Загружаем GetTravel…</div>
+      <iframe id="website" title="GetTravel: экскурсии и путешествия во Вьетнаме" referrerpolicy="no-referrer" allow="fullscreen" allowfullscreen></iframe>
+    </main>
+    <noscript>Для открытия GetTravel включите JavaScript или <a href="https://gettravel.asia/">перейдите на сайт</a>.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
