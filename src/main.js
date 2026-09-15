@@ -1,72 +1,111 @@
 import bridge from '@vkontakte/vk-bridge';
 import { createIcons, House, RotateCw, ExternalLink } from 'lucide';
-import { WEBSITE_URL, isVkLaunch, getTheme } from './config.js';
+import { WEBSITE_URL, isVkLaunch, getTheme, getNotice, safeInset } from './config.js';
 import './style.css';
 
 createIcons({ icons: { House, RotateCw, ExternalLink } });
 
-const frame = document.querySelector('#website');
+let frame = document.querySelector('#website');
 const loading = document.querySelector('#loading');
 const notice = document.querySelector('#notice');
 let loadTimer;
+let initTimeout;
 let bridgeProblem = '';
+let siteProblem = '';
+let unsubscribe = () => {};
 
-function showNotice(message) {
+function renderNotice() {
+  const message = getNotice(navigator.onLine, bridgeProblem, siteProblem);
   notice.textContent = message;
   notice.hidden = !message;
 }
 
 function loadWebsite() {
   clearTimeout(loadTimer);
-  showNotice(navigator.onLine ? bridgeProblem : 'Нет подключения к интернету.');
+  siteProblem = '';
+  renderNotice();
   loading.hidden = false;
-  // A new iframe context resets child navigation without accessing its cross-origin DOM.
-  frame.removeAttribute('src');
-  frame.src = WEBSITE_URL;
+  // Replace the browsing context so stale loads and child history cannot survive a reset.
+  const nextFrame = frame.cloneNode(false);
+  nextFrame.addEventListener('load', () => {
+    if (frame !== nextFrame) return;
+    clearTimeout(loadTimer);
+    loading.hidden = true;
+    siteProblem = '';
+    renderNotice();
+    // A cross-origin load event cannot prove that login or booking is working.
+  });
+  nextFrame.addEventListener('error', () => {
+    if (frame !== nextFrame) return;
+    clearTimeout(loadTimer);
+    loading.hidden = true;
+    siteProblem = 'Не удалось загрузить сайт. Откройте GetTravel в браузере.';
+    renderNotice();
+  });
   loadTimer = setTimeout(() => {
     loading.hidden = true;
-    showNotice('Сайт загружается дольше обычного. Можно обновить страницу или открыть его в браузере.');
+    siteProblem = 'Сайт загружается дольше обычного. Можно обновить страницу или открыть его в браузере.';
+    renderNotice();
   }, 15000);
+  nextFrame.src = WEBSITE_URL;
+  const previousFrame = frame;
+  frame = nextFrame;
+  previousFrame.replaceWith(nextFrame);
 }
 
-frame.addEventListener('load', () => {
-  clearTimeout(loadTimer);
-  loading.hidden = true;
-  // Cross-origin load does not prove that booking, login, or all content loaded.
-});
-frame.addEventListener('error', () => {
-  clearTimeout(loadTimer);
-  loading.hidden = true;
-  showNotice('Не удалось загрузить сайт. Откройте GetTravel в браузере.');
-});
-document.querySelector('#home').addEventListener('click', loadWebsite);
-document.querySelector('#reload').addEventListener('click', loadWebsite);
-window.addEventListener('offline', () => showNotice('Нет подключения к интернету.'));
-window.addEventListener('online', () => showNotice(bridgeProblem));
+const home = document.querySelector('#home');
+const reload = document.querySelector('#reload');
+home.addEventListener('click', loadWebsite);
+reload.addEventListener('click', loadWebsite);
+window.addEventListener('offline', renderNotice);
+window.addEventListener('online', renderNotice);
 
 if (isVkLaunch(location.search, bridge.isWebView())) {
-  const applyTheme = (scheme) => {
-    const theme = getTheme(scheme);
-    document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#202124' : '#ffffff';
+  const applyConfig = (data = {}) => {
+    if (data.scheme || data.appearance) {
+      const theme = getTheme(data.scheme, data.appearance);
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#202124' : '#ffffff';
+    }
+    if (data.insets) {
+      for (const edge of ['top', 'right', 'bottom', 'left']) {
+        document.documentElement.style.setProperty('--vk-inset-' + edge, safeInset(data.insets[edge]) + 'px');
+      }
+    }
   };
-  applyTheme(new URLSearchParams(location.search).get('vk_scheme'));
-  bridge.subscribe(({ detail }) => {
-    if (detail?.type === 'VKWebAppUpdateConfig') applyTheme(detail.data.scheme);
-  });
-  const initTimeout = setTimeout(() => {
+  applyConfig({ scheme: new URLSearchParams(location.search).get('vk_scheme') });
+  const onConfig = ({ detail } = {}) => {
+    if (detail?.type === 'VKWebAppUpdateConfig' || detail?.type === 'VKWebAppUpdateInsets') {
+      applyConfig(detail.data);
+    }
+  };
+  bridge.subscribe(onConfig);
+  unsubscribe = () => bridge.unsubscribe(onConfig);
+  initTimeout = setTimeout(() => {
     bridgeProblem = 'Нет ответа от ВКонтакте. Сайт можно открыть в браузере.';
-    showNotice(bridgeProblem);
+    renderNotice();
   }, 10000);
   bridge.send('VKWebAppInit').then(() => {
     clearTimeout(initTimeout);
     bridgeProblem = '';
-    showNotice(navigator.onLine ? '' : 'Нет подключения к интернету.');
+    renderNotice();
   }).catch(() => {
     clearTimeout(initTimeout);
     bridgeProblem = 'Не удалось подключиться к ВКонтакте. Сайт можно открыть в браузере.';
-    showNotice(bridgeProblem);
+    renderNotice();
   });
 }
 
 loadWebsite();
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    clearTimeout(loadTimer);
+    clearTimeout(initTimeout);
+    unsubscribe();
+    home.removeEventListener('click', loadWebsite);
+    reload.removeEventListener('click', loadWebsite);
+    window.removeEventListener('offline', renderNotice);
+    window.removeEventListener('online', renderNotice);
+  });
+}
